@@ -1,0 +1,628 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Contador semanal de permisos</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #dfe3e8;
+      --panel: #ffffff;
+      --ink: #111418;
+      --muted: #5d6670;
+      --line: #c6ccd3;
+      --accent: #111418;
+      --accent-2: #2e3338;
+      --danger: #111418;
+      --soft: #f2f4f6;
+      --shadow: 0 14px 34px rgba(0, 0, 0, 0.12);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Arial, Helvetica, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+    }
+
+    main {
+      width: min(1180px, calc(100% - 28px));
+      margin: 0 auto;
+      padding: 28px 0 36px;
+    }
+
+    header {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+
+    h1 {
+      margin: 0 0 6px;
+      font-size: clamp(26px, 4vw, 40px);
+      line-height: 1.05;
+      letter-spacing: 0;
+    }
+
+    p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      box-shadow: var(--shadow);
+    }
+
+    .total {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 16px;
+      align-items: center;
+      padding: 22px;
+      margin-bottom: 16px;
+    }
+
+    .total strong {
+      display: block;
+      font-size: 58px;
+      line-height: 1;
+      color: var(--accent-2);
+    }
+
+    .week-label {
+      font-weight: 700;
+      color: var(--ink);
+    }
+
+    .controls {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    button {
+      min-height: 42px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--ink);
+      font-weight: 700;
+      padding: 0 14px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      border-color: #111418;
+    }
+
+    .primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    .danger {
+      color: var(--danger);
+    }
+
+    .days {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(138px, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .day {
+      padding: 14px 12px;
+      min-height: 184px;
+      display: grid;
+      gap: 12px;
+      align-content: start;
+      overflow: hidden;
+    }
+
+    .day.today {
+      border-color: var(--accent);
+      outline: 2px solid rgba(17, 20, 24, 0.16);
+    }
+
+    .day-name {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      align-items: center;
+      font-weight: 800;
+    }
+
+    .badge {
+      min-width: 34px;
+      text-align: center;
+      border-radius: 999px;
+      background: var(--soft);
+      color: var(--ink);
+      padding: 5px 8px;
+      font-size: 14px;
+    }
+
+    .day-total {
+      font-size: 38px;
+      line-height: 1;
+      font-weight: 800;
+      color: var(--accent-2);
+    }
+
+    .day-people {
+      display: grid;
+      gap: 5px;
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.25;
+    }
+
+    .day-people div {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      border-top: 1px solid #eceff2;
+      padding-top: 4px;
+      min-width: 0;
+    }
+
+    .day-people span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .day-people strong {
+      color: var(--ink);
+      font-weight: 800;
+      min-width: 24px;
+      text-align: right;
+    }
+
+    input[type="text"],
+    select {
+      width: 100%;
+      height: 46px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 0 10px;
+      font-size: 17px;
+      color: var(--ink);
+      background: #fff;
+    }
+
+    label {
+      display: grid;
+      gap: 7px;
+      font-weight: 800;
+      color: var(--ink);
+    }
+
+    .capture {
+      padding: 16px 18px;
+      margin-bottom: 16px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .capture-grid {
+      display: grid;
+      grid-template-columns: 170px 170px 1fr auto;
+      gap: 12px;
+      align-items: end;
+    }
+
+    .message {
+      min-height: 28px;
+      color: var(--accent-2);
+      font-weight: 800;
+    }
+
+    .people {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .person {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 12px;
+      background: var(--soft);
+    }
+
+    .person span {
+      display: block;
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 3px;
+    }
+
+    .note {
+      padding: 16px 18px;
+      display: grid;
+      gap: 12px;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 82px;
+      resize: vertical;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 10px;
+      font-family: inherit;
+      font-size: 15px;
+      color: var(--ink);
+    }
+
+    .footer {
+      margin-top: 14px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    @media (max-width: 820px) {
+      header,
+      .total {
+        grid-template-columns: 1fr;
+      }
+
+      header {
+        align-items: start;
+      }
+
+      .controls {
+        justify-content: flex-start;
+      }
+
+      .days {
+        grid-template-columns: repeat(2, minmax(180px, 1fr));
+      }
+
+      .capture-grid,
+      .people {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 520px) {
+      .days {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .total strong {
+        font-size: 48px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>Permisos de la semana</h1>
+        <p>Registra los permisos diarios y revisa el total acumulado de lunes a domingo.</p>
+      </div>
+      <div class="controls">
+        <button id="resetWeek" class="danger" type="button">Reiniciar semana</button>
+      </div>
+    </header>
+
+    <section class="total panel" aria-label="Resumen semanal">
+      <div>
+        <p class="week-label" id="weekRange">Semana actual</p>
+        <p>El total se actualiza automaticamente con los permisos capturados.</p>
+      </div>
+      <div>
+        <strong id="weeklyTotal">0</strong>
+        <p>permisos en total</p>
+      </div>
+    </section>
+
+    <section class="days" id="daysGrid" aria-label="Permisos por dia"></section>
+
+    <section class="capture panel" aria-label="Captura por persona">
+      <div>
+        <h2>Captura por persona</h2>
+        <p>Selecciona persona y dia, escribe el numero de permiso y se suma automaticamente.</p>
+      </div>
+
+      <form class="capture-grid" id="permitForm">
+        <label>
+          Persona
+          <select id="personSelect">
+            <option value="David">David</option>
+            <option value="Yussef">Yussef</option>
+            <option value="Yajaira">Yajaira</option>
+            <option value="Carlos">Carlos</option>
+          </select>
+        </label>
+        <label>
+          Dia
+          <select id="daySelect">
+            <option value="0">Lunes</option>
+            <option value="1">Martes</option>
+            <option value="2">Miercoles</option>
+            <option value="3">Jueves</option>
+            <option value="4">Viernes</option>
+            <option value="5">Sabado</option>
+            <option value="6">Domingo</option>
+          </select>
+        </label>
+        <label>
+          Numero de permiso
+          <input id="permitNumber" type="text" inputmode="numeric" autocomplete="off" placeholder="Ejemplo: 2452520">
+        </label>
+        <button class="primary" type="submit">Agregar</button>
+      </form>
+
+      <div class="message" id="captureMessage">Aun no has capturado permisos por persona.</div>
+      <div class="people" id="peopleSummary"></div>
+    </section>
+
+    <section class="note panel">
+      <label for="notes"><strong>Notas de la semana</strong></label>
+      <textarea id="notes" placeholder="Ejemplo: faltaron dos registros del martes, revisar bitacora..."></textarea>
+    </section>
+
+    <p class="footer">Tus datos quedan guardados solo en este navegador. Para empezar otra semana, usa "Reiniciar semana".</p>
+  </main>
+
+  <script>
+    const STORAGE_KEY = "contadorPermisosSemana";
+    const days = ["Lunes", "Martes", "Miercoles", "Jueves", "Viernes", "Sabado", "Domingo"];
+    const people = ["David", "Yussef", "Yajaira", "Carlos"];
+    const state = loadState();
+    const grid = document.querySelector("#daysGrid");
+    const total = document.querySelector("#weeklyTotal");
+    const notes = document.querySelector("#notes");
+    const personSelect = document.querySelector("#personSelect");
+    const daySelect = document.querySelector("#daySelect");
+    const permitNumber = document.querySelector("#permitNumber");
+    const captureMessage = document.querySelector("#captureMessage");
+    const peopleSummary = document.querySelector("#peopleSummary");
+
+    function getMonday(date) {
+      const copy = new Date(date);
+      const day = copy.getDay();
+      const diff = day === 0 ? -6 : 1 - day;
+      copy.setHours(0, 0, 0, 0);
+      copy.setDate(copy.getDate() + diff);
+      return copy;
+    }
+
+    function formatDate(date) {
+      return date.toLocaleDateString("es-MX", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric"
+      });
+    }
+
+    function formatWeekId(date) {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    }
+
+    function currentWeekId() {
+      return formatWeekId(getMonday(new Date()));
+    }
+
+    function emptyState() {
+      return {
+        weekId: currentWeekId(),
+        counts: [0, 0, 0, 0, 0, 0, 0],
+        entries: [],
+        notes: ""
+      };
+    }
+
+    function loadState() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+        if (saved && Array.isArray(saved.counts) && saved.weekId === currentWeekId()) {
+          return {
+            weekId: saved.weekId,
+            counts: days.map((_, index) => Number(saved.counts[index]) || 0),
+            entries: Array.isArray(saved.entries) ? saved.entries : [],
+            notes: saved.notes || ""
+          };
+        }
+      } catch (error) {
+        console.warn("No se pudo leer el guardado anterior.", error);
+      }
+
+      return emptyState();
+    }
+
+    function saveState() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }
+
+    function resetCurrentWeek(message) {
+      state.weekId = currentWeekId();
+      state.counts = [0, 0, 0, 0, 0, 0, 0];
+      state.entries = [];
+      state.notes = "";
+      notes.value = "";
+      daySelect.value = String(todayIndex());
+      renderWeekRange();
+      renderDays();
+      renderCapture();
+      updateTotal();
+      if (message) captureMessage.textContent = message;
+    }
+
+    function checkWeekRollover() {
+      if (state.weekId === currentWeekId()) {
+        renderWeekRange();
+        return;
+      }
+
+      resetCurrentWeek("Semana nueva iniciada automaticamente.");
+    }
+
+    function renderWeekRange() {
+      const monday = getMonday(new Date());
+      const sunday = new Date(monday);
+      sunday.setDate(monday.getDate() + 6);
+      document.querySelector("#weekRange").textContent = `${formatDate(monday)} al ${formatDate(sunday)}`;
+    }
+
+    function todayIndex() {
+      const day = new Date().getDay();
+      return day === 0 ? 6 : day - 1;
+    }
+
+    function updateTotal() {
+      recomputeCountsFromEntries();
+      total.textContent = state.counts.reduce((sum, count) => sum + count, 0);
+      document.querySelectorAll("[data-count]").forEach((badge, index) => {
+        badge.textContent = state.counts[index];
+      });
+      document.querySelectorAll("[data-day-total]").forEach((value, index) => {
+        value.textContent = state.counts[index];
+      });
+      saveState();
+    }
+
+    function recomputeCountsFromEntries() {
+      const counts = [0, 0, 0, 0, 0, 0, 0];
+      state.entries.forEach((entry) => {
+        const index = Number(entry.dayIndex);
+        if (index >= 0 && index <= 6) counts[index] += 1;
+      });
+      state.counts = counts;
+    }
+
+    function getPersonCount(person) {
+      return state.entries.filter((entry) => entry.person === person).length;
+    }
+
+    function getPersonCountForDay(person, dayIndex) {
+      return state.entries.filter((entry) => {
+        return entry.person === person && Number(entry.dayIndex) === dayIndex;
+      }).length;
+    }
+
+    function renderPeopleSummary() {
+      peopleSummary.innerHTML = "";
+
+      people.forEach((person) => {
+        const count = getPersonCount(person);
+        const item = document.createElement("div");
+        item.className = "person";
+        item.innerHTML = `
+          <strong>${person}</strong>
+          <span>${count} ${count === 1 ? "permiso" : "permisos"}</span>
+        `;
+        peopleSummary.appendChild(item);
+      });
+    }
+
+    function renderCapture() {
+      renderPeopleSummary();
+    }
+
+    function addEntry(person, dayIndex, number) {
+      const cleanNumber = number.trim();
+      if (!cleanNumber) {
+        captureMessage.textContent = "Escribe un numero de permiso.";
+        return;
+      }
+
+      const repeated = state.entries.some((entry) => entry.number === cleanNumber);
+      if (repeated) {
+        captureMessage.textContent = `El permiso ${cleanNumber} ya estaba capturado.`;
+        return;
+      }
+
+      const now = new Date();
+      state.entries.push({
+        id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        person,
+        number: cleanNumber,
+        dayIndex: Number(dayIndex),
+        time: now.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })
+      });
+
+      updateTotal();
+      const personCount = getPersonCount(person);
+      captureMessage.textContent = `${person}: hiciste ${personCount} ${personCount === 1 ? "permiso" : "permisos"}.`;
+      permitNumber.value = "";
+      permitNumber.focus();
+      renderDays();
+      renderCapture();
+    }
+
+    function renderDays() {
+      const current = todayIndex();
+      grid.innerHTML = "";
+
+      days.forEach((day, index) => {
+        const card = document.createElement("article");
+        const dayPeople = people.map((person) => {
+          const count = getPersonCountForDay(person, index);
+          return `<div><span>${person}</span><strong>${count}</strong></div>`;
+        }).join("");
+
+        card.className = `day panel${index === current ? " today" : ""}`;
+        card.innerHTML = `
+          <div class="day-name">
+            <span>${day}</span>
+            <span class="badge" data-count="${index}">${state.counts[index]}</span>
+          </div>
+          <div class="day-total" data-day-total="${index}">${state.counts[index]}</div>
+          <div class="day-people">${dayPeople}</div>
+        `;
+        grid.appendChild(card);
+      });
+    }
+
+    document.querySelector("#resetWeek").addEventListener("click", () => {
+      const confirmed = confirm("Esto borrara los numeros de esta semana. Deseas continuar?");
+      if (!confirmed) return;
+
+      resetCurrentWeek("Semana reiniciada.");
+    });
+
+    document.querySelector("#permitForm").addEventListener("submit", (event) => {
+      event.preventDefault();
+      addEntry(personSelect.value, daySelect.value, permitNumber.value);
+    });
+
+    notes.value = state.notes;
+    notes.addEventListener("input", () => {
+      state.notes = notes.value;
+      saveState();
+    });
+
+    renderWeekRange();
+    daySelect.value = String(todayIndex());
+    renderDays();
+    renderCapture();
+    updateTotal();
+    setInterval(checkWeekRollover, 60000);
+    window.addEventListener("focus", checkWeekRollover);
+  </script>
+</body>
+</html>
