@@ -254,6 +254,94 @@
       margin-top: 3px;
     }
 
+    .history-panel {
+      margin-bottom: 16px;
+      display: grid;
+      overflow: hidden;
+    }
+
+    .history-toggle {
+      width: 100%;
+      min-height: 58px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      border: 0;
+      border-radius: 0;
+      background: var(--accent);
+      color: #fff;
+      padding: 0 18px;
+      text-align: left;
+      font-size: 20px;
+    }
+
+    .history-toggle span {
+      display: block;
+      color: #d7dce1;
+      font-size: 13px;
+      font-weight: 400;
+      margin-top: 2px;
+    }
+
+    .history-toggle::after {
+      content: "+";
+      width: 34px;
+      height: 34px;
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(255, 255, 255, 0.38);
+      border-radius: 999px;
+      font-size: 24px;
+      line-height: 1;
+      flex: 0 0 auto;
+    }
+
+    .history-panel.open .history-toggle::after {
+      content: "-";
+    }
+
+    .history-body {
+      display: none;
+      padding: 16px 18px;
+      gap: 12px;
+    }
+
+    .history-panel.open .history-body {
+      display: grid;
+    }
+
+    .history-list {
+      display: grid;
+      gap: 8px;
+      max-height: 260px;
+      overflow: auto;
+      padding-right: 4px;
+    }
+
+    .history-item {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--soft);
+      padding: 10px;
+    }
+
+    .history-item small {
+      display: block;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    .mini {
+      min-height: 34px;
+      padding: 0 10px;
+      font-size: 13px;
+    }
+
     .note {
       padding: 16px 18px;
       display: grid;
@@ -377,6 +465,17 @@
       <div class="people" id="peopleSummary"></div>
     </section>
 
+    <section class="history-panel panel" id="historyPanel" aria-label="Historial de permisos">
+      <button class="history-toggle" id="historyToggle" type="button" aria-expanded="false" aria-controls="historyBody">
+        <strong>Historial</strong>
+        <span id="historyCount">0 permisos guardados</span>
+      </button>
+      <div class="history-body" id="historyBody">
+        <p>Permisos ingresados. Esta lista no se borra al reiniciar la semana.</p>
+        <div class="history-list" id="permitHistory"></div>
+      </div>
+    </section>
+
     <section class="note panel">
       <label for="notes"><strong>Notas de la semana</strong></label>
       <textarea id="notes" placeholder="Ejemplo: faltaron dos registros del martes, revisar bitacora..."></textarea>
@@ -398,6 +497,10 @@
     const permitNumber = document.querySelector("#permitNumber");
     const captureMessage = document.querySelector("#captureMessage");
     const peopleSummary = document.querySelector("#peopleSummary");
+    const permitHistory = document.querySelector("#permitHistory");
+    const historyPanel = document.querySelector("#historyPanel");
+    const historyToggle = document.querySelector("#historyToggle");
+    const historyCount = document.querySelector("#historyCount");
 
     function getMonday(date) {
       const copy = new Date(date);
@@ -432,6 +535,7 @@
         weekId: currentWeekId(),
         counts: [0, 0, 0, 0, 0, 0, 0],
         entries: [],
+        clearedWeeks: {},
         notes: ""
       };
     }
@@ -439,12 +543,22 @@
     function loadState() {
       try {
         const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-        if (saved && Array.isArray(saved.counts) && saved.weekId === currentWeekId()) {
+        if (saved) {
+          const savedWeekId = saved.weekId || currentWeekId();
+          const entries = Array.isArray(saved.entries) ? saved.entries.map((entry) => {
+            return {
+              ...entry,
+              weekId: entry.weekId || savedWeekId,
+              createdAt: Number(entry.createdAt) || 0
+            };
+          }) : [];
+
           return {
-            weekId: saved.weekId,
-            counts: days.map((_, index) => Number(saved.counts[index]) || 0),
-            entries: Array.isArray(saved.entries) ? saved.entries : [],
-            notes: saved.notes || ""
+            weekId: currentWeekId(),
+            counts: days.map((_, index) => Number((saved.counts || [])[index]) || 0),
+            entries,
+            clearedWeeks: saved.clearedWeeks || {},
+            notes: savedWeekId === currentWeekId() ? saved.notes || "" : ""
           };
         }
       } catch (error) {
@@ -460,8 +574,8 @@
 
     function resetCurrentWeek(message) {
       state.weekId = currentWeekId();
+      state.clearedWeeks[state.weekId] = Date.now();
       state.counts = [0, 0, 0, 0, 0, 0, 0];
-      state.entries = [];
       state.notes = "";
       notes.value = "";
       daySelect.value = String(todayIndex());
@@ -478,7 +592,15 @@
         return;
       }
 
-      resetCurrentWeek("Semana nueva iniciada automaticamente.");
+      state.weekId = currentWeekId();
+      state.notes = "";
+      notes.value = "";
+      daySelect.value = String(todayIndex());
+      renderWeekRange();
+      renderDays();
+      renderCapture();
+      updateTotal();
+      captureMessage.textContent = "Semana nueva iniciada automaticamente.";
     }
 
     function renderWeekRange() {
@@ -509,9 +631,15 @@
       const counts = [0, 0, 0, 0, 0, 0, 0];
       state.entries.forEach((entry) => {
         const index = Number(entry.dayIndex);
-        if (index >= 0 && index <= 6) counts[index] += 1;
+        if (index >= 0 && index <= 6 && isVisibleWeekEntry(entry)) counts[index] += 1;
       });
       state.counts = counts;
+    }
+
+    function isVisibleWeekEntry(entry) {
+      const clearedAt = Number(state.clearedWeeks[currentWeekId()]) || 0;
+      const createdAt = Number(entry.createdAt) || 0;
+      return entry.weekId === currentWeekId() && createdAt >= clearedAt;
     }
 
     function getPersonCount(person) {
@@ -520,7 +648,7 @@
 
     function getPersonCountForDay(person, dayIndex) {
       return state.entries.filter((entry) => {
-        return entry.person === person && Number(entry.dayIndex) === dayIndex;
+        return entry.person === person && Number(entry.dayIndex) === dayIndex && isVisibleWeekEntry(entry);
       }).length;
     }
 
@@ -541,6 +669,35 @@
 
     function renderCapture() {
       renderPeopleSummary();
+      renderHistory();
+    }
+
+    function renderHistory() {
+      permitHistory.innerHTML = "";
+      const totalEntries = state.entries.length;
+      historyCount.textContent = `${totalEntries} ${totalEntries === 1 ? "permiso guardado" : "permisos guardados"}`;
+
+      if (totalEntries === 0) {
+        permitHistory.innerHTML = "<p>Aun no hay permisos en el historial.</p>";
+        return;
+      }
+
+      state.entries.slice().reverse().forEach((entry) => {
+        const item = document.createElement("div");
+        item.className = "history-item";
+        item.innerHTML = `
+          <div>
+            <strong>${entry.person}</strong> - ${entry.number}
+            <small>${days[entry.dayIndex]} - ${entry.weekId || "Semana actual"} - ${entry.time}</small>
+          </div>
+          <button class="mini danger" type="button" data-delete-entry="${entry.id}">Borrar</button>
+        `;
+        permitHistory.appendChild(item);
+      });
+
+      document.querySelectorAll("[data-delete-entry]").forEach((button) => {
+        button.addEventListener("click", () => deleteEntry(button.dataset.deleteEntry));
+      });
     }
 
     function addEntry(person, dayIndex, number) {
@@ -562,6 +719,8 @@
         person,
         number: cleanNumber,
         dayIndex: Number(dayIndex),
+        weekId: currentWeekId(),
+        createdAt: Date.now(),
         time: now.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })
       });
 
@@ -570,6 +729,17 @@
       captureMessage.textContent = `${person}: hiciste ${personCount} ${personCount === 1 ? "permiso" : "permisos"}.`;
       permitNumber.value = "";
       permitNumber.focus();
+      renderDays();
+      renderCapture();
+    }
+
+    function deleteEntry(id) {
+      const index = state.entries.findIndex((entry) => entry.id === id);
+      if (index === -1) return;
+
+      const [entry] = state.entries.splice(index, 1);
+      updateTotal();
+      captureMessage.textContent = `Se borro el permiso ${entry.number} de ${entry.person}.`;
       renderDays();
       renderCapture();
     }
@@ -608,6 +778,11 @@
     document.querySelector("#permitForm").addEventListener("submit", (event) => {
       event.preventDefault();
       addEntry(personSelect.value, daySelect.value, permitNumber.value);
+    });
+
+    historyToggle.addEventListener("click", () => {
+      const isOpen = historyPanel.classList.toggle("open");
+      historyToggle.setAttribute("aria-expanded", String(isOpen));
     });
 
     notes.value = state.notes;
