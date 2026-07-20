@@ -492,6 +492,11 @@
 
   <script>
     const STORAGE_KEY = "contadorPermisosSemana";
+    const CLOUD = {
+      url: "",
+      anonKey: "",
+      table: "permit_entries"
+    };
     const days = ["Lunes", "Martes", "Miercoles", "Jueves", "Viernes", "Sabado", "Domingo"];
     const people = ["David", "Yussef", "Yajaira", "Carlos"];
     const state = loadState();
@@ -576,9 +581,115 @@
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     }
 
+    function cloudEnabled() {
+      return CLOUD.url.trim() !== "" && CLOUD.anonKey.trim() !== "";
+    }
+
+    function cloudHeaders(extra = {}) {
+      return {
+        apikey: CLOUD.anonKey,
+        Authorization: `Bearer ${CLOUD.anonKey}`,
+        "Content-Type": "application/json",
+        ...extra
+      };
+    }
+
+    function toCloudEntry(entry) {
+      return {
+        id: entry.id,
+        person: entry.person,
+        permit_number: entry.number,
+        day_index: Number(entry.dayIndex),
+        week_id: entry.weekId || currentWeekId(),
+        created_ms: Number(entry.createdAt) || Date.now(),
+        captured_time: entry.time || "",
+        hidden_week: Boolean(entry.hiddenWeek)
+      };
+    }
+
+    function fromCloudEntry(row) {
+      return {
+        id: row.id,
+        person: row.person,
+        number: row.permit_number,
+        dayIndex: Number(row.day_index),
+        weekId: row.week_id,
+        createdAt: Number(row.created_ms) || 0,
+        time: row.captured_time || "",
+        hiddenWeek: Boolean(row.hidden_week)
+      };
+    }
+
+    async function cloudFetchEntries() {
+      if (!cloudEnabled()) return;
+
+      try {
+        const response = await fetch(`${CLOUD.url}/rest/v1/${CLOUD.table}?select=*&order=created_ms.desc`, {
+          headers: cloudHeaders({ Accept: "application/json" })
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const rows = await response.json();
+        state.entries = rows.map(fromCloudEntry);
+        saveState();
+        renderDays();
+        renderCapture();
+        updateTotal();
+        captureMessage.textContent = "Datos cargados desde la nube.";
+      } catch (error) {
+        console.warn("No se pudo cargar la nube.", error);
+        captureMessage.textContent = "No se pudo conectar a la nube; se usara este navegador.";
+      }
+    }
+
+    async function cloudSaveEntry(entry) {
+      if (!cloudEnabled()) return;
+
+      try {
+        await fetch(`${CLOUD.url}/rest/v1/${CLOUD.table}`, {
+          method: "POST",
+          headers: cloudHeaders({ Prefer: "resolution=merge-duplicates" }),
+          body: JSON.stringify(toCloudEntry(entry))
+        });
+      } catch (error) {
+        console.warn("No se pudo guardar en la nube.", error);
+      }
+    }
+
+    async function cloudDeleteEntry(id) {
+      if (!cloudEnabled()) return;
+
+      try {
+        await fetch(`${CLOUD.url}/rest/v1/${CLOUD.table}?id=eq.${encodeURIComponent(id)}`, {
+          method: "DELETE",
+          headers: cloudHeaders()
+        });
+      } catch (error) {
+        console.warn("No se pudo borrar en la nube.", error);
+      }
+    }
+
+    async function cloudHideCurrentWeek() {
+      if (!cloudEnabled()) return;
+
+      try {
+        await fetch(`${CLOUD.url}/rest/v1/${CLOUD.table}?week_id=eq.${currentWeekId()}&hidden_week=eq.false`, {
+          method: "PATCH",
+          headers: cloudHeaders(),
+          body: JSON.stringify({ hidden_week: true })
+        });
+      } catch (error) {
+        console.warn("No se pudo reiniciar la semana en la nube.", error);
+      }
+    }
+
     function resetCurrentWeek(message) {
       state.weekId = currentWeekId();
       state.clearedWeeks[state.weekId] = Date.now();
+      state.entries.forEach((entry) => {
+        if (entry.weekId === state.weekId) entry.hiddenWeek = true;
+      });
+      cloudHideCurrentWeek();
       state.counts = [0, 0, 0, 0, 0, 0, 0];
       state.notes = "";
       notes.value = "";
@@ -643,7 +754,7 @@
     function isVisibleWeekEntry(entry) {
       const clearedAt = Number(state.clearedWeeks[currentWeekId()]) || 0;
       const createdAt = Number(entry.createdAt) || 0;
-      return entry.weekId === currentWeekId() && createdAt >= clearedAt;
+      return entry.weekId === currentWeekId() && createdAt >= clearedAt && !entry.hiddenWeek;
     }
 
     function getPersonCount(person) {
@@ -725,9 +836,11 @@
         dayIndex: Number(dayIndex),
         weekId: currentWeekId(),
         createdAt: Date.now(),
+        hiddenWeek: false,
         time: now.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })
       });
 
+      cloudSaveEntry(state.entries[state.entries.length - 1]);
       updateTotal();
       const personCount = getPersonCount(person);
       captureMessage.textContent = `${person}: hiciste ${personCount} ${personCount === 1 ? "permiso" : "permisos"}.`;
@@ -742,6 +855,7 @@
       if (index === -1) return;
 
       const [entry] = state.entries.splice(index, 1);
+      cloudDeleteEntry(entry.id);
       updateTotal();
       captureMessage.textContent = `Se borro el permiso ${entry.number} de ${entry.person}.`;
       renderDays();
@@ -795,6 +909,7 @@
     renderDays();
     renderCapture();
     updateTotal();
+    cloudFetchEntries();
     setInterval(checkWeekRollover, 60000);
     window.addEventListener("focus", checkWeekRollover);
   </script>
