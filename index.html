@@ -223,7 +223,7 @@
 
     .capture-grid {
       display: grid;
-      grid-template-columns: 170px 170px 1fr auto;
+      grid-template-columns: 160px 160px 190px 1fr auto;
       gap: 12px;
       align-items: end;
     }
@@ -237,6 +237,12 @@
     .people {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .types {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
       gap: 10px;
     }
 
@@ -391,7 +397,8 @@
       }
 
       .capture-grid,
-      .people {
+      .people,
+      .types {
         grid-template-columns: 1fr;
       }
     }
@@ -435,7 +442,7 @@
     <section class="capture panel" aria-label="Captura por persona">
       <div>
         <h2>Captura por persona</h2>
-        <p>Selecciona persona y dia, escribe el numero de permiso y se suma automaticamente.</p>
+        <p>Selecciona persona, dia y tipo de registro. Despues escribe el numero o dato que vas a capturar.</p>
       </div>
 
       <form class="capture-grid" id="permitForm">
@@ -461,7 +468,17 @@
           </select>
         </label>
         <label>
-          Numero de permiso
+          Tipo
+          <select id="typeSelect">
+            <option value="permiso">Permiso</option>
+            <option value="vehiculo">Vehiculo</option>
+            <option value="operador">Operador</option>
+            <option value="transporte">Transporte</option>
+            <option value="remolque">Remolque</option>
+          </select>
+        </label>
+        <label>
+          Numero o dato
           <input id="permitNumber" type="text" inputmode="numeric" autocomplete="off" placeholder="Ejemplo: 2452520">
         </label>
         <button class="primary" type="submit">Agregar</button>
@@ -469,6 +486,7 @@
 
       <div class="message" id="captureMessage">Aun no has capturado permisos por persona.</div>
       <div class="people" id="peopleSummary"></div>
+      <div class="types" id="typeSummary"></div>
     </section>
 
     <details class="history-panel panel" id="historyPanel">
@@ -499,15 +517,24 @@
     };
     const days = ["Lunes", "Martes", "Miercoles", "Jueves", "Viernes", "Sabado", "Domingo"];
     const people = ["David", "Yussef", "Yajaira", "Carlos"];
+    const recordTypes = [
+      { value: "permiso", label: "Permisos" },
+      { value: "vehiculo", label: "Vehiculos" },
+      { value: "operador", label: "Operadores" },
+      { value: "transporte", label: "Transportes" },
+      { value: "remolque", label: "Remolques" }
+    ];
     const state = loadState();
     const grid = document.querySelector("#daysGrid");
     const total = document.querySelector("#weeklyTotal");
     const notes = document.querySelector("#notes");
     const personSelect = document.querySelector("#personSelect");
     const daySelect = document.querySelector("#daySelect");
+    const typeSelect = document.querySelector("#typeSelect");
     const permitNumber = document.querySelector("#permitNumber");
     const captureMessage = document.querySelector("#captureMessage");
     const peopleSummary = document.querySelector("#peopleSummary");
+    const typeSummary = document.querySelector("#typeSummary");
     const permitHistory = document.querySelector("#permitHistory");
     const historyCount = document.querySelector("#historyCount");
 
@@ -558,7 +585,8 @@
             return {
               ...entry,
               weekId: entry.weekId || savedWeekId,
-              createdAt: Number(entry.createdAt) || 0
+              createdAt: Number(entry.createdAt) || 0,
+              type: entry.type || "permiso"
             };
           }) : [];
 
@@ -599,6 +627,7 @@
         id: entry.id,
         person: entry.person,
         permit_number: entry.number,
+        record_type: entry.type || "permiso",
         day_index: Number(entry.dayIndex),
         week_id: entry.weekId || currentWeekId(),
         created_ms: Number(entry.createdAt) || Date.now(),
@@ -612,6 +641,7 @@
         id: row.id,
         person: row.person,
         number: row.permit_number,
+        type: row.record_type || "permiso",
         dayIndex: Number(row.day_index),
         weekId: row.week_id,
         createdAt: Number(row.created_ms) || 0,
@@ -761,6 +791,10 @@
       return state.entries.filter((entry) => entry.person === person).length;
     }
 
+    function getTypeCount(type) {
+      return state.entries.filter((entry) => (entry.type || "permiso") === type).length;
+    }
+
     function getPersonCountForDay(person, dayIndex) {
       return state.entries.filter((entry) => {
         return entry.person === person && Number(entry.dayIndex) === dayIndex && isVisibleWeekEntry(entry);
@@ -782,8 +816,24 @@
       });
     }
 
+    function renderTypeSummary() {
+      typeSummary.innerHTML = "";
+
+      recordTypes.forEach((type) => {
+        const count = getTypeCount(type.value);
+        const item = document.createElement("div");
+        item.className = "person";
+        item.innerHTML = `
+          <strong>${type.label}</strong>
+          <span>${count} ${count === 1 ? "registro" : "registros"}</span>
+        `;
+        typeSummary.appendChild(item);
+      });
+    }
+
     function renderCapture() {
       renderPeopleSummary();
+      renderTypeSummary();
       renderHistory();
     }
 
@@ -803,7 +853,7 @@
         item.innerHTML = `
           <div>
             <strong>${entry.person}</strong> - ${entry.number}
-            <small>${days[entry.dayIndex]} - ${entry.weekId || "Semana actual"} - ${entry.time}</small>
+            <small>${getTypeLabel(entry.type)} - ${days[entry.dayIndex]} - ${entry.weekId || "Semana actual"} - ${entry.time}</small>
           </div>
           <button class="mini danger" type="button" data-delete-entry="${entry.id}">Borrar</button>
         `;
@@ -815,16 +865,21 @@
       });
     }
 
-    function addEntry(person, dayIndex, number) {
+    function getTypeLabel(value) {
+      const found = recordTypes.find((type) => type.value === (value || "permiso"));
+      return found ? found.label : "Permisos";
+    }
+
+    function addEntry(person, dayIndex, type, number) {
       const cleanNumber = number.trim();
       if (!cleanNumber) {
-        captureMessage.textContent = "Escribe un numero de permiso.";
+        captureMessage.textContent = "Escribe el numero o dato que vas a capturar.";
         return;
       }
 
       const repeated = state.entries.some((entry) => entry.number === cleanNumber);
       if (repeated) {
-        captureMessage.textContent = `El permiso ${cleanNumber} ya estaba capturado.`;
+        captureMessage.textContent = `El registro ${cleanNumber} ya estaba capturado.`;
         return;
       }
 
@@ -833,6 +888,7 @@
         id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
         person,
         number: cleanNumber,
+        type,
         dayIndex: Number(dayIndex),
         weekId: currentWeekId(),
         createdAt: Date.now(),
@@ -843,7 +899,7 @@
       cloudSaveEntry(state.entries[state.entries.length - 1]);
       updateTotal();
       const personCount = getPersonCount(person);
-      captureMessage.textContent = `${person}: hiciste ${personCount} ${personCount === 1 ? "permiso" : "permisos"}.`;
+      captureMessage.textContent = `${person}: hiciste ${personCount} ${personCount === 1 ? "registro" : "registros"}.`;
       permitNumber.value = "";
       permitNumber.focus();
       renderDays();
@@ -857,7 +913,7 @@
       const [entry] = state.entries.splice(index, 1);
       cloudDeleteEntry(entry.id);
       updateTotal();
-      captureMessage.textContent = `Se borro el permiso ${entry.number} de ${entry.person}.`;
+      captureMessage.textContent = `Se borro el registro ${entry.number} de ${entry.person}.`;
       renderDays();
       renderCapture();
     }
@@ -895,7 +951,7 @@
 
     document.querySelector("#permitForm").addEventListener("submit", (event) => {
       event.preventDefault();
-      addEntry(personSelect.value, daySelect.value, permitNumber.value);
+      addEntry(personSelect.value, daySelect.value, typeSelect.value, permitNumber.value);
     });
 
     notes.value = state.notes;
