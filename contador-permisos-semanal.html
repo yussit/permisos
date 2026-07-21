@@ -246,6 +246,55 @@
       gap: 10px;
     }
 
+    .summary-panel {
+      margin-top: 4px;
+      overflow: hidden;
+    }
+
+    .summary-toggle {
+      width: 100%;
+      min-height: 46px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--soft);
+      color: var(--ink);
+      padding: 0 14px;
+      list-style: none;
+      cursor: pointer;
+      font-weight: 800;
+    }
+
+    .summary-toggle::-webkit-details-marker {
+      display: none;
+    }
+
+    .summary-toggle::after {
+      content: "+";
+      width: 28px;
+      height: 28px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fff;
+      font-size: 20px;
+      line-height: 1;
+    }
+
+    .summary-panel[open] .summary-toggle::after {
+      content: "-";
+    }
+
+    .summary-body {
+      display: grid;
+      gap: 10px;
+      padding-top: 10px;
+    }
+
     .report {
       padding: 16px 18px;
       margin-bottom: 16px;
@@ -554,8 +603,15 @@
       </form>
 
       <div class="message" id="captureMessage">Aun no has capturado permisos por persona.</div>
-      <div class="people" id="peopleSummary"></div>
-      <div class="types" id="typeSummary"></div>
+      <details class="summary-panel">
+        <summary class="summary-toggle">
+          Ver resumen de capturas
+        </summary>
+        <div class="summary-body">
+          <div class="people" id="peopleSummary"></div>
+          <div class="types" id="typeSummary"></div>
+        </div>
+      </details>
     </section>
 
     <details class="history-panel panel" id="historyPanel">
