@@ -827,13 +827,19 @@
       if (!cloudEnabled()) return;
 
       try {
-        await fetch(`${CLOUD.url}/rest/v1/${CLOUD.table}`, {
+        const response = await fetch(`${CLOUD.url}/rest/v1/${CLOUD.table}`, {
           method: "POST",
           headers: cloudHeaders({ Prefer: "resolution=merge-duplicates" }),
           body: JSON.stringify(toCloudEntry(entry))
         });
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(errorText || `HTTP ${response.status}`);
+        }
+        captureMessage.textContent = "Registro guardado en la nube.";
       } catch (error) {
         console.warn("No se pudo guardar en la nube.", error);
+        captureMessage.textContent = "No se guardo en la nube. Ejecuta el SQL de actualizacion en Supabase.";
       }
     }
 
