@@ -223,7 +223,7 @@
 
     .capture-grid {
       display: grid;
-      grid-template-columns: 170px 170px 1fr auto;
+      grid-template-columns: 160px 160px 190px 1fr auto;
       gap: 12px;
       align-items: end;
     }
@@ -237,6 +237,12 @@
     .people {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .types {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
       gap: 10px;
     }
 
@@ -274,6 +280,12 @@
       padding: 0 18px;
       text-align: left;
       font-size: 20px;
+      list-style: none;
+      cursor: pointer;
+    }
+
+    .history-toggle::-webkit-details-marker {
+      display: none;
     }
 
     .history-toggle span {
@@ -297,7 +309,7 @@
       flex: 0 0 auto;
     }
 
-    .history-panel.open .history-toggle::after {
+    .history-panel[open] .history-toggle::after {
       content: "-";
     }
 
@@ -307,7 +319,7 @@
       gap: 12px;
     }
 
-    .history-panel.open .history-body {
+    .history-panel[open] .history-body {
       display: grid;
     }
 
@@ -385,7 +397,8 @@
       }
 
       .capture-grid,
-      .people {
+      .people,
+      .types {
         grid-template-columns: 1fr;
       }
     }
@@ -429,7 +442,7 @@
     <section class="capture panel" aria-label="Captura por persona">
       <div>
         <h2>Captura por persona</h2>
-        <p>Selecciona persona y dia, escribe el numero de permiso y se suma automaticamente.</p>
+        <p>Selecciona persona, dia y tipo de registro. Despues escribe el numero o dato que vas a capturar.</p>
       </div>
 
       <form class="capture-grid" id="permitForm">
@@ -455,7 +468,17 @@
           </select>
         </label>
         <label>
-          Numero de permiso
+          Tipo
+          <select id="typeSelect">
+            <option value="permiso">Permiso</option>
+            <option value="vehiculo">Vehiculo</option>
+            <option value="operador">Operador</option>
+            <option value="transporte">Transporte</option>
+            <option value="remolque">Remolque</option>
+          </select>
+        </label>
+        <label>
+          Numero o dato
           <input id="permitNumber" type="text" inputmode="numeric" autocomplete="off" placeholder="Ejemplo: 2452520">
         </label>
         <button class="primary" type="submit">Agregar</button>
@@ -463,18 +486,19 @@
 
       <div class="message" id="captureMessage">Aun no has capturado permisos por persona.</div>
       <div class="people" id="peopleSummary"></div>
+      <div class="types" id="typeSummary"></div>
     </section>
 
-    <section class="history-panel panel" id="historyPanel" aria-label="Historial de permisos">
-      <button class="history-toggle" id="historyToggle" type="button" aria-expanded="false" aria-controls="historyBody">
+    <details class="history-panel panel" id="historyPanel">
+      <summary class="history-toggle">
         <strong>Historial</strong>
         <span id="historyCount">0 permisos guardados</span>
-      </button>
+      </summary>
       <div class="history-body" id="historyBody">
         <p>Permisos ingresados. Esta lista no se borra al reiniciar la semana.</p>
         <div class="history-list" id="permitHistory"></div>
       </div>
-    </section>
+    </details>
 
     <section class="note panel">
       <label for="notes"><strong>Notas de la semana</strong></label>
@@ -486,20 +510,32 @@
 
   <script>
     const STORAGE_KEY = "contadorPermisosSemana";
+    const CLOUD = {
+      url: "https://agywcfqjobqqjeyeimuh.supabase.co",
+      anonKey: "sb_publishable_dEEIdVlZQww2zIjaFS4Sbg_BLUcIHNs",
+      table: "permit_entries"
+    };
     const days = ["Lunes", "Martes", "Miercoles", "Jueves", "Viernes", "Sabado", "Domingo"];
     const people = ["David", "Yussef", "Yajaira", "Carlos"];
+    const recordTypes = [
+      { value: "permiso", label: "Permisos" },
+      { value: "vehiculo", label: "Vehiculos" },
+      { value: "operador", label: "Operadores" },
+      { value: "transporte", label: "Transportes" },
+      { value: "remolque", label: "Remolques" }
+    ];
     const state = loadState();
     const grid = document.querySelector("#daysGrid");
     const total = document.querySelector("#weeklyTotal");
     const notes = document.querySelector("#notes");
     const personSelect = document.querySelector("#personSelect");
     const daySelect = document.querySelector("#daySelect");
+    const typeSelect = document.querySelector("#typeSelect");
     const permitNumber = document.querySelector("#permitNumber");
     const captureMessage = document.querySelector("#captureMessage");
     const peopleSummary = document.querySelector("#peopleSummary");
+    const typeSummary = document.querySelector("#typeSummary");
     const permitHistory = document.querySelector("#permitHistory");
-    const historyPanel = document.querySelector("#historyPanel");
-    const historyToggle = document.querySelector("#historyToggle");
     const historyCount = document.querySelector("#historyCount");
 
     function getMonday(date) {
@@ -549,7 +585,8 @@
             return {
               ...entry,
               weekId: entry.weekId || savedWeekId,
-              createdAt: Number(entry.createdAt) || 0
+              createdAt: Number(entry.createdAt) || 0,
+              type: entry.type || "permiso"
             };
           }) : [];
 
@@ -572,9 +609,117 @@
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     }
 
+    function cloudEnabled() {
+      return CLOUD.url.trim() !== "" && CLOUD.anonKey.trim() !== "";
+    }
+
+    function cloudHeaders(extra = {}) {
+      return {
+        apikey: CLOUD.anonKey,
+        Authorization: `Bearer ${CLOUD.anonKey}`,
+        "Content-Type": "application/json",
+        ...extra
+      };
+    }
+
+    function toCloudEntry(entry) {
+      return {
+        id: entry.id,
+        person: entry.person,
+        permit_number: entry.number,
+        record_type: entry.type || "permiso",
+        day_index: Number(entry.dayIndex),
+        week_id: entry.weekId || currentWeekId(),
+        created_ms: Number(entry.createdAt) || Date.now(),
+        captured_time: entry.time || "",
+        hidden_week: Boolean(entry.hiddenWeek)
+      };
+    }
+
+    function fromCloudEntry(row) {
+      return {
+        id: row.id,
+        person: row.person,
+        number: row.permit_number,
+        type: row.record_type || "permiso",
+        dayIndex: Number(row.day_index),
+        weekId: row.week_id,
+        createdAt: Number(row.created_ms) || 0,
+        time: row.captured_time || "",
+        hiddenWeek: Boolean(row.hidden_week)
+      };
+    }
+
+    async function cloudFetchEntries() {
+      if (!cloudEnabled()) return;
+
+      try {
+        const response = await fetch(`${CLOUD.url}/rest/v1/${CLOUD.table}?select=*&order=created_ms.desc`, {
+          headers: cloudHeaders({ Accept: "application/json" })
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const rows = await response.json();
+        state.entries = rows.map(fromCloudEntry);
+        saveState();
+        renderDays();
+        renderCapture();
+        updateTotal();
+        captureMessage.textContent = "Datos cargados desde la nube.";
+      } catch (error) {
+        console.warn("No se pudo cargar la nube.", error);
+        captureMessage.textContent = "No se pudo conectar a la nube; se usara este navegador.";
+      }
+    }
+
+    async function cloudSaveEntry(entry) {
+      if (!cloudEnabled()) return;
+
+      try {
+        await fetch(`${CLOUD.url}/rest/v1/${CLOUD.table}`, {
+          method: "POST",
+          headers: cloudHeaders({ Prefer: "resolution=merge-duplicates" }),
+          body: JSON.stringify(toCloudEntry(entry))
+        });
+      } catch (error) {
+        console.warn("No se pudo guardar en la nube.", error);
+      }
+    }
+
+    async function cloudDeleteEntry(id) {
+      if (!cloudEnabled()) return;
+
+      try {
+        await fetch(`${CLOUD.url}/rest/v1/${CLOUD.table}?id=eq.${encodeURIComponent(id)}`, {
+          method: "DELETE",
+          headers: cloudHeaders()
+        });
+      } catch (error) {
+        console.warn("No se pudo borrar en la nube.", error);
+      }
+    }
+
+    async function cloudHideCurrentWeek() {
+      if (!cloudEnabled()) return;
+
+      try {
+        await fetch(`${CLOUD.url}/rest/v1/${CLOUD.table}?week_id=eq.${currentWeekId()}&hidden_week=eq.false`, {
+          method: "PATCH",
+          headers: cloudHeaders(),
+          body: JSON.stringify({ hidden_week: true })
+        });
+      } catch (error) {
+        console.warn("No se pudo reiniciar la semana en la nube.", error);
+      }
+    }
+
     function resetCurrentWeek(message) {
       state.weekId = currentWeekId();
       state.clearedWeeks[state.weekId] = Date.now();
+      state.entries.forEach((entry) => {
+        if (entry.weekId === state.weekId) entry.hiddenWeek = true;
+      });
+      cloudHideCurrentWeek();
       state.counts = [0, 0, 0, 0, 0, 0, 0];
       state.notes = "";
       notes.value = "";
@@ -639,11 +784,15 @@
     function isVisibleWeekEntry(entry) {
       const clearedAt = Number(state.clearedWeeks[currentWeekId()]) || 0;
       const createdAt = Number(entry.createdAt) || 0;
-      return entry.weekId === currentWeekId() && createdAt >= clearedAt;
+      return entry.weekId === currentWeekId() && createdAt >= clearedAt && !entry.hiddenWeek;
     }
 
     function getPersonCount(person) {
       return state.entries.filter((entry) => entry.person === person).length;
+    }
+
+    function getTypeCount(type) {
+      return state.entries.filter((entry) => (entry.type || "permiso") === type).length;
     }
 
     function getPersonCountForDay(person, dayIndex) {
@@ -667,8 +816,24 @@
       });
     }
 
+    function renderTypeSummary() {
+      typeSummary.innerHTML = "";
+
+      recordTypes.forEach((type) => {
+        const count = getTypeCount(type.value);
+        const item = document.createElement("div");
+        item.className = "person";
+        item.innerHTML = `
+          <strong>${type.label}</strong>
+          <span>${count} ${count === 1 ? "registro" : "registros"}</span>
+        `;
+        typeSummary.appendChild(item);
+      });
+    }
+
     function renderCapture() {
       renderPeopleSummary();
+      renderTypeSummary();
       renderHistory();
     }
 
@@ -688,7 +853,7 @@
         item.innerHTML = `
           <div>
             <strong>${entry.person}</strong> - ${entry.number}
-            <small>${days[entry.dayIndex]} - ${entry.weekId || "Semana actual"} - ${entry.time}</small>
+            <small>${getTypeLabel(entry.type)} - ${days[entry.dayIndex]} - ${entry.weekId || "Semana actual"} - ${entry.time}</small>
           </div>
           <button class="mini danger" type="button" data-delete-entry="${entry.id}">Borrar</button>
         `;
@@ -700,16 +865,21 @@
       });
     }
 
-    function addEntry(person, dayIndex, number) {
+    function getTypeLabel(value) {
+      const found = recordTypes.find((type) => type.value === (value || "permiso"));
+      return found ? found.label : "Permisos";
+    }
+
+    function addEntry(person, dayIndex, type, number) {
       const cleanNumber = number.trim();
       if (!cleanNumber) {
-        captureMessage.textContent = "Escribe un numero de permiso.";
+        captureMessage.textContent = "Escribe el numero o dato que vas a capturar.";
         return;
       }
 
       const repeated = state.entries.some((entry) => entry.number === cleanNumber);
       if (repeated) {
-        captureMessage.textContent = `El permiso ${cleanNumber} ya estaba capturado.`;
+        captureMessage.textContent = `El registro ${cleanNumber} ya estaba capturado.`;
         return;
       }
 
@@ -718,15 +888,18 @@
         id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
         person,
         number: cleanNumber,
+        type,
         dayIndex: Number(dayIndex),
         weekId: currentWeekId(),
         createdAt: Date.now(),
+        hiddenWeek: false,
         time: now.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })
       });
 
+      cloudSaveEntry(state.entries[state.entries.length - 1]);
       updateTotal();
       const personCount = getPersonCount(person);
-      captureMessage.textContent = `${person}: hiciste ${personCount} ${personCount === 1 ? "permiso" : "permisos"}.`;
+      captureMessage.textContent = `${person}: hiciste ${personCount} ${personCount === 1 ? "registro" : "registros"}.`;
       permitNumber.value = "";
       permitNumber.focus();
       renderDays();
@@ -738,8 +911,9 @@
       if (index === -1) return;
 
       const [entry] = state.entries.splice(index, 1);
+      cloudDeleteEntry(entry.id);
       updateTotal();
-      captureMessage.textContent = `Se borro el permiso ${entry.number} de ${entry.person}.`;
+      captureMessage.textContent = `Se borro el registro ${entry.number} de ${entry.person}.`;
       renderDays();
       renderCapture();
     }
@@ -777,12 +951,7 @@
 
     document.querySelector("#permitForm").addEventListener("submit", (event) => {
       event.preventDefault();
-      addEntry(personSelect.value, daySelect.value, permitNumber.value);
-    });
-
-    historyToggle.addEventListener("click", () => {
-      const isOpen = historyPanel.classList.toggle("open");
-      historyToggle.setAttribute("aria-expanded", String(isOpen));
+      addEntry(personSelect.value, daySelect.value, typeSelect.value, permitNumber.value);
     });
 
     notes.value = state.notes;
@@ -796,6 +965,7 @@
     renderDays();
     renderCapture();
     updateTotal();
+    cloudFetchEntries();
     setInterval(checkWeekRollover, 60000);
     window.addEventListener("focus", checkWeekRollover);
   </script>
