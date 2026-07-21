@@ -246,6 +246,75 @@
       gap: 10px;
     }
 
+    .report {
+      padding: 16px 18px;
+      margin-bottom: 16px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .report-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: start;
+      flex-wrap: wrap;
+    }
+
+    .report-total {
+      min-width: 140px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--soft);
+      padding: 10px 12px;
+      text-align: right;
+    }
+
+    .report-total strong {
+      display: block;
+      font-size: 28px;
+      line-height: 1;
+    }
+
+    .report-table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+    }
+
+    .report-table {
+      width: 100%;
+      min-width: 720px;
+      border-collapse: collapse;
+      background: #fff;
+    }
+
+    .report-table th,
+    .report-table td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px;
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    .report-table th:first-child,
+    .report-table td:first-child {
+      text-align: left;
+      font-weight: 800;
+    }
+
+    .report-table thead th {
+      background: var(--accent);
+      color: #fff;
+      font-size: 13px;
+    }
+
+    .report-table tfoot td {
+      background: var(--soft);
+      font-weight: 800;
+      border-bottom: 0;
+    }
+
     .person {
       border: 1px solid var(--line);
       border-radius: 6px;
@@ -500,6 +569,26 @@
       </div>
     </details>
 
+    <section class="report panel" aria-label="Informe semanal">
+      <div class="report-head">
+        <div>
+          <h2>Informe semanal</h2>
+          <p id="reportLabel">Resumen de la semana actual por persona y area.</p>
+        </div>
+        <div class="report-total">
+          <strong id="reportTotal">0</strong>
+          <span>registros</span>
+        </div>
+      </div>
+      <div class="report-table-wrap">
+        <table class="report-table">
+          <thead id="reportHead"></thead>
+          <tbody id="reportBody"></tbody>
+          <tfoot id="reportFoot"></tfoot>
+        </table>
+      </div>
+    </section>
+
     <section class="note panel">
       <label for="notes"><strong>Notas de la semana</strong></label>
       <textarea id="notes" placeholder="Ejemplo: faltaron dos registros del martes, revisar bitacora..."></textarea>
@@ -537,6 +626,11 @@
     const typeSummary = document.querySelector("#typeSummary");
     const permitHistory = document.querySelector("#permitHistory");
     const historyCount = document.querySelector("#historyCount");
+    const reportLabel = document.querySelector("#reportLabel");
+    const reportTotal = document.querySelector("#reportTotal");
+    const reportHead = document.querySelector("#reportHead");
+    const reportBody = document.querySelector("#reportBody");
+    const reportFoot = document.querySelector("#reportFoot");
 
     function getMonday(date) {
       const copy = new Date(date);
@@ -664,6 +758,7 @@
         saveState();
         renderDays();
         renderCapture();
+        renderWeeklyReport();
         updateTotal();
         captureMessage.textContent = "Datos cargados desde la nube.";
       } catch (error) {
@@ -727,6 +822,7 @@
       renderWeekRange();
       renderDays();
       renderCapture();
+      renderWeeklyReport();
       updateTotal();
       if (message) captureMessage.textContent = message;
     }
@@ -744,6 +840,7 @@
       renderWeekRange();
       renderDays();
       renderCapture();
+      renderWeeklyReport();
       updateTotal();
       captureMessage.textContent = "Semana nueva iniciada automaticamente.";
     }
@@ -769,6 +866,7 @@
       document.querySelectorAll("[data-day-total]").forEach((value, index) => {
         value.textContent = state.counts[index];
       });
+      renderWeeklyReport();
       saveState();
     }
 
@@ -793,6 +891,16 @@
 
     function getTypeCount(type) {
       return state.entries.filter((entry) => (entry.type || "permiso") === type).length;
+    }
+
+    function getVisibleWeekEntries() {
+      return state.entries.filter(isVisibleWeekEntry);
+    }
+
+    function countEntriesFor(person, type) {
+      return getVisibleWeekEntries().filter((entry) => {
+        return entry.person === person && (entry.type || "permiso") === type;
+      }).length;
     }
 
     function getPersonCountForDay(person, dayIndex) {
@@ -835,6 +943,27 @@
       renderPeopleSummary();
       renderTypeSummary();
       renderHistory();
+    }
+
+    function renderWeeklyReport() {
+      const visibleEntries = getVisibleWeekEntries();
+      const columnHeaders = recordTypes.map((type) => `<th>${type.label}</th>`).join("");
+      reportHead.innerHTML = `<tr><th>Persona</th>${columnHeaders}<th>Total</th></tr>`;
+      reportLabel.textContent = `${document.querySelector("#weekRange").textContent} - resumen por persona y area.`;
+      reportTotal.textContent = visibleEntries.length;
+
+      reportBody.innerHTML = people.map((person) => {
+        const counts = recordTypes.map((type) => countEntriesFor(person, type.value));
+        const personTotal = counts.reduce((sum, count) => sum + count, 0);
+        const cells = counts.map((count) => `<td>${count}</td>`).join("");
+        return `<tr><td>${person}</td>${cells}<td>${personTotal}</td></tr>`;
+      }).join("");
+
+      const typeTotals = recordTypes.map((type) => {
+        return visibleEntries.filter((entry) => (entry.type || "permiso") === type.value).length;
+      });
+      const totalCells = typeTotals.map((count) => `<td>${count}</td>`).join("");
+      reportFoot.innerHTML = `<tr><td>Total</td>${totalCells}<td>${visibleEntries.length}</td></tr>`;
     }
 
     function renderHistory() {
@@ -904,6 +1033,7 @@
       permitNumber.focus();
       renderDays();
       renderCapture();
+      renderWeeklyReport();
     }
 
     function deleteEntry(id) {
@@ -916,6 +1046,7 @@
       captureMessage.textContent = `Se borro el registro ${entry.number} de ${entry.person}.`;
       renderDays();
       renderCapture();
+      renderWeeklyReport();
     }
 
     function renderDays() {
@@ -964,6 +1095,7 @@
     daySelect.value = String(todayIndex());
     renderDays();
     renderCapture();
+    renderWeeklyReport();
     updateTotal();
     cloudFetchEntries();
     setInterval(checkWeekRollover, 60000);
